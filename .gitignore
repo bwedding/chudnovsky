@@ -1,0 +1,23 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/Chudnovsky/config/applicationhost.config
+/.vs/Chudnovsky/FileContentIndex
+/.vs/Chudnovsky/v17/ipch/AutoPCH/5157bd5451653b0e
+/.vs/Chudnovsky/v17/.wsuo
+/.vs/Chudnovsky/v17/Browse.VC.db
+/.vs/Chudnovsky/v17/DocumentLayout.json
+/.vs/CMakeWorkspaceSettings.json
+/.vs/ProjectSettings.json
+/.vs/slnx.sqlite
+/.vs/VSWorkspaceState.json
+/Chudnovsky/.vs/Chudnovsky/FileContentIndex
+/Chudnovsky/.vs/Chudnovsky/v17/ipch/AutoPCH
+/Chudnovsky/.vs/Chudnovsky/v17
+/Chudnovsky/Chudnovsky/x64/Debug
+/Chudnovsky/Chudnovsky/x64/Release/Chudnovsky.tlog
+/Chudnovsky/Chudnovsky/x64/Release
+/Chudnovsky/x64/Debug
+/Chudnovsky/x64/Release
+/Chudnovsky/executiontimer.h
