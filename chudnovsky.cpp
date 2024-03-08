@@ -32,12 +32,6 @@ std::mutex cache_mutex;
 static cpp_int numerator(const cpp_int& k);
 static cpp_int denominator_a(const cpp_int& k);
 
-#include <vector>
-#include <fstream>
-
-
-
-
 int64_t initializeLastWrittenKey(const std::string& keyTrackingFile)
 {
     std::ifstream file(keyTrackingFile);
@@ -180,7 +174,7 @@ boost::multiprecision::cpp_int cached_newpow_3k(int64_t k, std::vector<boost::mu
 }
 
 
-boost::multiprecision::mpfr_float cached_result(const int64_t k, std::vector<mpfr_float>& cache)
+mpfr_float cached_result(const int64_t k, std::vector<mpfr_float>& cache)
 {
     std::lock_guard lock(cache_mutex); // Ensure thread safety
 
@@ -269,6 +263,19 @@ static cpp_int pow_3k(int64_t k)
     return ret;
 }
 
+static cpp_int altpow_3k(int64_t k)
+{
+    cpp_int base = 640320;
+    cpp_int ret = 1;
+    int64_t exponent = 3 * k;
+
+    for (int64_t i = 0; i < exponent; ++i)
+        ret *= base;
+
+    return ret;
+
+}
+
 static cpp_int newpow_3k(int64_t k)
 {
     cpp_int base = 640320;
@@ -324,6 +331,25 @@ int main(const int argc, char* argv[])
         std::cerr << "Usage: " << argv[0] << " number_of_terms\n";
         return 1;
     }
+
+    mpfr_t result;
+    unsigned long int base = 640320;
+    unsigned long int exponent = 3;
+
+    // Initialize MPFR variable with a default precision of 53 bits (double precision)
+    mpfr_init2(result, 5300);
+
+    // Calculate base^exponent and store the result in 'result'
+    mpfr_ui_pow_ui(result, base, exponent, MPFR_RNDN); // RNDN is the rounding mode (to nearest)
+
+    // Print the result
+    printf("640320^3 = ");
+    mpfr_out_str(stdout, 10, 100000, result, MPFR_RNDN); // Output the result in base 10
+    printf("\n");
+
+    // Clear the MPFR variable
+    mpfr_clear(result);
+
 
     int64_t lastWrittenKey = initializeLastWrittenKey(keyTrackingFile);
 
