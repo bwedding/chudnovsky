@@ -26,3 +26,10 @@
 /Chudnovsky.exe
 /gmp-10.dll
 /mpfr-6.dll
+/Chudnovsky/Chudnovsky.exe
+/mpreal.h
+/Chudnovsky/mpreal.h
+/Chudnovsky/gmp-10.dll
+/Chudnovsky/mpfr-6.dll
+/Chudnovsky/pi3k.txt
+/Chudnovsky/pi5k.txt
