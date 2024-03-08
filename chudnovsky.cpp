@@ -6,25 +6,202 @@
  *
  */
 
+#include <algorithm>
+#include <chrono>
+#include <execution>
+#include <fstream>
 #include <iostream>
 #include <iomanip>
 #include <string>
 #include <thread>
 #include <vector>
-#include <algorithm>
-#include <iostream>
-#include <execution>
 #include <boost/multiprecision/cpp_int.hpp>
 #include <boost/multiprecision/mpfr.hpp>
-#include <algorithm>
-#include <iostream>
-#include <vector>
-#include <chrono>
 #include <gmp.h>
 
-void calculatePI(int, mpf_t&);
-
 using namespace std::chrono;
+using boost::multiprecision::cpp_int;
+using boost::multiprecision::mpfr_float;
+
+const std::string filename = "pi-cache.bin";
+const std::string keyTrackingFile = "last_key.txt";
+
+static constexpr int log2n = 4;
+std::mutex cache_mutex;
+
+static cpp_int numerator(const cpp_int& k);
+static cpp_int denominator_a(const cpp_int& k);
+
+#include <vector>
+#include <fstream>
+
+
+
+
+int64_t initializeLastWrittenKey(const std::string& keyTrackingFile)
+{
+    std::ifstream file(keyTrackingFile);
+    int64_t lastKey = 0;
+    if (file.is_open()) 
+    {
+        file >> lastKey;
+    }
+    file.close();
+    return lastKey;
+}
+
+// Optional: Function to save the last written key for future use
+void saveLastWrittenKey(const std::string& keyTrackingFile, int64_t lastWrittenKey)
+{
+    std::ofstream file(keyTrackingFile);
+    if (file.is_open()) 
+    {
+        file << lastWrittenKey;
+    }
+    file.close();
+}
+
+void appendNewEntriesToFile(const std::vector<mpfr_float>& cache, const std::string& filename, int64_t& lastWrittenKey)
+{
+    std::ofstream file(filename, std::ios::app); // Open file in append mode
+    if (!file.is_open()) 
+    {
+        std::cerr << "Failed to open file for appending.\n";
+        return;
+    }
+
+    // Iterate over new elements based on lastWrittenKey
+    for (size_t i = lastWrittenKey; i < cache.size(); ++i) 
+    {
+        file << (i + 1) << "," << cache[i].str() << std::endl; // i + 1 because keys start from 1
+        lastWrittenKey = i + 1; // Update lastWrittenKey to match the key just written
+    }
+
+    file.close();
+}
+
+void writeObjectsToFile(const std::vector<mpfr_float>& cache, const std::string& filename, int64_t& lastWrittenKey)
+{
+    std::ofstream file(filename, std::ios::binary | std::ios::app);
+    if (!file.is_open())
+    {
+        std::cerr << "Failed to open file for appending.\n";
+        return;
+    }
+
+    if(cache.size() == lastWrittenKey)
+    {
+    	return;
+	}
+
+    for (size_t i = lastWrittenKey; i < cache.size(); ++i)
+    {
+        file << cache[i] << "\n"; 
+        lastWrittenKey = i + 1; 
+    }
+}
+
+void readVectorFromFile(std::vector<mpfr_float>& cache, const std::string& filename, int64_t &lastWrittenKey)
+{
+    std::ifstream file(filename);
+    if (!file.is_open()) 
+    {
+        std::cerr << "Failed to open file for reading. Starting with an empty cache.\n";
+        return;
+    }
+
+    std::string line;
+    int64_t i = 0;
+    while (std::getline(file, line) && i <=  lastWrittenKey)
+    {
+        std::istringstream iss(line);
+        std::string part;
+        std::getline(iss, part, ','); // Extract key
+        int64_t key = std::stoll(part);
+
+        std::getline(iss, part); // Extract value
+        mpfr_float value(part);
+
+        if (key > cache.size()) 
+        {
+            cache.resize(key); // Ensure vector is large enough
+        }
+        cache[key - 1] = value; // Subtract 1 because vector indices are 0-based
+    }
+
+    file.close();
+}
+
+void readObjectsFromFile(std::vector<mpfr_float>& vec, const std::string& filename, int64_t& lastWrittenKey)
+{
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) 
+    {
+        std::cerr << "Failed to open file for reading. Starting with an empty cache.\n";
+        return;
+
+    }
+
+    mpfr_float obj;
+    while (file >> obj)
+    {
+        vec.push_back(obj);
+    }
+}
+boost::multiprecision::cpp_int newpow_3k(int64_t k);
+
+boost::multiprecision::cpp_int cached_newpow_3k(int64_t k, std::vector<boost::multiprecision::cpp_int> &cache)
+{
+    // Check if k is within the bounds of the cache vector
+    if (k >= 0 && static_cast<size_t>(k) <= cache.size()) 
+    {
+        // Adjust k to be zero-based for vector access
+        if(cache[k] == 0)
+        {
+            cache[k] = newpow_3k(k);
+            return cache[k];
+        }
+			
+        return cache[k]; // Return cached result
+    }
+
+    // Calculate result for new k
+    boost::multiprecision::cpp_int result = newpow_3k(k);
+
+    // Resize the vector if needed, to accommodate the new k value
+    if (static_cast<size_t>(k) > cache.size()) {
+        cache.resize(k);
+    }
+
+    // Cache the new result (adjust k to be zero-based)
+    cache[k] = result;
+
+    return result;
+}
+
+
+boost::multiprecision::mpfr_float cached_result(const int64_t k, std::vector<mpfr_float>& cache)
+{
+    std::lock_guard lock(cache_mutex); // Ensure thread safety
+
+    // Check if k is within the bounds of the cache vector
+    if (k >= 0 && static_cast<size_t>(k) <= cache.size())
+    {
+        
+        if (k >= cache.size())
+        {
+            cache.push_back( mpfr_float(numerator(k)) / mpfr_float(denominator_a(k) * newpow_3k(k)));
+            return cache[k];
+        }
+
+        return cache[k]; // Return cached result
+    }
+
+    // Cache the new result (adjust k to be zero-based)
+    cache.push_back(mpfr_float(numerator(k)) / mpfr_float(denominator_a(k) * newpow_3k(k)));
+    return cache[k];
+}
+
 
 class ExecutionTimer
 {
@@ -58,10 +235,6 @@ public:
 private:
     Clock::time_point mStart = Clock::now();
 };
-
-using boost::multiprecision::cpp_int;
-
-static constexpr int log2n = 4;
 
 static cpp_int factorial(const cpp_int& num) 
 {
@@ -144,12 +317,15 @@ boost::multiprecision::mpfr_float calcConstant(int precision)
 
 int main(const int argc, char* argv[]) 
 {
+    std::vector<mpfr_float> cache;
+
     if(argc != 2) 
     {
         std::cerr << "Usage: " << argv[0] << " number_of_terms\n";
         return 1;
     }
-    using boost::multiprecision::mpfr_float;
+
+    int64_t lastWrittenKey = initializeLastWrittenKey(keyTrackingFile);
 
     try {
 	    const int64_t num_terms = std::stoi(argv[1]);
@@ -159,68 +335,36 @@ int main(const int argc, char* argv[])
             throw std::invalid_argument("Number of terms must be greater than zero.");
         }
 
-
-        mpfr_float pi;
         const int precision = calcPrecision(num_terms);
-
-        mpfr_float::default_precision(precision * log2n);
+        mpfr_float pi;
 
         {
-	        mpfr_float constant = calcConstant(precision);
+            //ExecutionTimer timer;
+	        cache.reserve(num_terms);
+            mpfr_float::default_precision(precision * log2n);
+
+            const mpfr_float constant = calcConstant(precision);
+
+            readObjectsFromFile(cache, filename, lastWrittenKey);
+	        std::cout << "Cache size: " << cache.size() << std::endl;
+	                
 	        mpfr_float pi_inverse = 0;
-	        ExecutionTimer timer;
-#if 1
-            unsigned num_threads = std::thread::hardware_concurrency();
 
-            std::vector<mpfr_float> partial_sums(num_threads);
-
-            std::for_each(std::execution::par_unseq, partial_sums.begin(), partial_sums.end(), [&](mpfr_float& local_sum)
-                {
-	                const auto thread_id = &local_sum - partial_sums.data();
-                    for (int64_t k = thread_id; k < num_terms; k += num_threads)
-                    {
-	                    const mpfr_float temp = mpfr_float(numerator(k)) / mpfr_float(denominator_a(k) * pow_3k(k));
-                        local_sum += temp;
-                    }
-                });
-
-            // Combine the partial sums
-            for (const auto& sum : partial_sums)
+            for (int64_t k = 0; k < num_terms; k++)
             {
-                pi_inverse += sum;
+                const mpfr_float temp = cached_result(k, cache);
+                pi_inverse += temp;
             }
-
-#else
-            unsigned num_threads = std::thread::hardware_concurrency();
-            std::vector<std::thread> threads(num_threads);
-			std::mutex mtx;
-
-            for (unsigned i = 0; i < num_threads; ++i)
-            {
-                threads[i] = std::thread([&, i]
-                    {
-                        for (int64_t k = i; k < num_terms; k += num_threads)
-                        {
-                            const mpfr_float temp = mpfr_float(numerator(k)) / mpfr_float(denominator_a(k) * pow_3k(k));
-                            {
-                                std::lock_guard lock(mtx);
-                                pi_inverse += temp;
-                            }
-                        }
-                    });
-            }
-            for (auto& th : threads)
-                th.join();
-
-
-#endif
-            pi = mpfr_float(1) / (pi_inverse * constant);
+			pi = mpfr_float(1) / (pi_inverse * constant);
 
         }
 
         std::cout << std::setprecision(precision) << pi << "\n";
+        writeObjectsToFile(cache, filename, lastWrittenKey);
+        saveLastWrittenKey(keyTrackingFile, lastWrittenKey);
 
-    } 
+    }
+
     catch(std::exception& e)
     {
         std::cerr << "Error: " << e.what() << "\n";
@@ -233,65 +377,3 @@ int main(const int argc, char* argv[])
 
 
 
-void calculatePI(int pi_len, mpf_t &_pi)
-{
-
-    /*
-       mpf_t is the type defined for GMP integers.
-       It is a pointer to the internals of the GMP integer data structure
-     */
-
-
-    mpf_t _prev; // previous eq. ans.
-    mpf_t temp; // Temp var.
-    mpf_t temp1; // Temp var.
-    mpf_t one; // ONE
-    mpf_t two; //TWO
-
-    mpf_set_default_prec(pi_len);
-
-    /* 1. Initialize the number */
-    mpf_init(_pi);
-    mpf_init(_prev);
-    mpf_init(temp);
-    mpf_init(temp1);
-    mpf_init(one);
-    mpf_init(two);
-
-    mpf_set_d(_pi, 0);
-    mpf_set_d(_prev, 0);
-    mpf_set_d(temp, 0);
-    mpf_set_d(temp1, 0);
-    mpf_set_d(one, 1);
-    mpf_set_d(two, 2);
-
-    for (int i = pi_len; i > 0; i--) {
-        mpf_set_d(temp, i);
-
-        mpf_set(temp1, two);
-
-        mpf_mul_ui(temp1, temp1, i);
-        mpf_add_ui(temp1, temp1, 1);
-
-        mpf_div(temp, temp, temp1);
-
-        mpf_mul(_prev, _prev, temp);
-        mpf_add(_pi, _prev, one);
-
-
-        mpf_set(_prev, _pi);
-    }
-
-    mpf_mul(_pi, _pi, two);
-    gmp_printf("PI = %.*Ff", pi_len / 14 + 2, _pi);
-
-    printf("\n");
-    /* 6. Clean up the mpf_t handles or else we will leak memory */
-    mpf_clear(_pi);
-    mpf_clear(_prev);
-    mpf_clear(temp);
-    mpf_clear(temp1);
-    mpf_clear(one);
-    mpf_clear(two);
-
-}

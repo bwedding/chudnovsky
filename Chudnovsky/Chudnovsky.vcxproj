@@ -139,6 +139,7 @@
     <ClCompile Include="..\chudnovsky.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\mpreal.h" />
     <ClInclude Include="executiontimer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
